@@ -1,7 +1,15 @@
 "use client";
 
-import { Camera, Check, Heart, Loader2, RotateCcw, Sparkles } from "lucide-react";
-import { QRCodeSVG } from "qrcode.react";
+import {
+  Camera,
+  Download,
+  Heart,
+  Home,
+  Loader2,
+  RotateCcw,
+  Sparkles,
+} from "lucide-react";
+import Link from "next/link";
 import {
   useCallback,
   useEffect,
@@ -22,13 +30,7 @@ import {
   TEMPLATE_SLOT_PIXEL_WIDTH,
 } from "@/lib/composeStrip";
 
-type Phase =
-  | "idle"
-  | "countdown"
-  | "review"
-  | "uploading"
-  | "success"
-  | "error";
+type Phase = "idle" | "countdown" | "review" | "error";
 
 const COUNTDOWN_SEC = 5;
 
@@ -99,7 +101,6 @@ export function PhotoboothClient() {
   const [flash, setFlash] = useState(false);
   const [stripPreview, setStripPreview] = useState<string | null>(null);
   const [stripBlob, setStripBlob] = useState<Blob | null>(null);
-  const [blobUrl, setBlobUrl] = useState<string | null>(null);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [cameraReady, setCameraReady] = useState(false);
   const [webcamMounted, setWebcamMounted] = useState(false);
@@ -190,7 +191,6 @@ export function PhotoboothClient() {
     setShots([]);
     setStripPreview(null);
     setStripBlob(null);
-    setBlobUrl(null);
     setUploadError(null);
     setCameraReady(false);
     setCountdown(COUNTDOWN_SEC);
@@ -200,38 +200,23 @@ export function PhotoboothClient() {
   const redo = useCallback(() => {
     setStripPreview(null);
     setStripBlob(null);
-    setBlobUrl(null);
     setShots([]);
     setUploadError(null);
     setPhase("idle");
   }, []);
 
-  const confirmUpload = useCallback(async () => {
+  const downloadStripPng = useCallback(() => {
     if (!stripBlob) return;
-    setPhase("uploading");
-    setUploadError(null);
-    try {
-      const form = new FormData();
-      form.append(
-        "file",
-        stripBlob,
-        `womens-month-strip-${Date.now()}.png`,
-      );
-      const res = await fetch("/api/upload", {
-        method: "POST",
-        body: form,
-      });
-      const data = (await res.json()) as { url?: string; error?: string };
-      if (!res.ok) {
-        throw new Error(data.error ?? "Upload failed");
-      }
-      if (!data.url) throw new Error("No URL returned");
-      setBlobUrl(data.url);
-      setPhase("success");
-    } catch (e) {
-      setUploadError(e instanceof Error ? e.message : "Upload failed");
-      setPhase("error");
-    }
+    const name = `womens-month-strip-${Date.now()}.png`;
+    const url = URL.createObjectURL(stripBlob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = name;
+    a.rel = "noopener";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    window.setTimeout(() => URL.revokeObjectURL(url), 0);
   }, [stripBlob]);
 
   const currentShotIndex = phase === "countdown" ? shots.length : 0;
@@ -287,7 +272,7 @@ export function PhotoboothClient() {
               <p className="text-center text-sm leading-relaxed text-rose-900/88">
                 <strong className="text-rose-800">5-second countdown</strong>{" "}
                 before each photo. Watch the template fill in as you go, then
-                confirm your strip.
+                download your strip or head home.
               </p>
             </div>
             <button
@@ -391,7 +376,7 @@ export function PhotoboothClient() {
                 Building final image…
               </p>
             )}
-            <div className="flex w-full shrink-0 flex-col gap-3 sm:flex-row sm:justify-center">
+            <div className="flex w-full shrink-0 flex-col gap-3 sm:flex-row sm:flex-wrap sm:justify-center">
               <button
                 type="button"
                 onClick={redo}
@@ -404,15 +389,24 @@ export function PhotoboothClient() {
               </button>
               <button
                 type="button"
-                onClick={() => void confirmUpload()}
+                onClick={downloadStripPng}
                 disabled={!stripBlob || stripBuilding}
                 className={pillClass(
-                  "w-full bg-gradient-to-r from-violet-500 via-fuchsia-500 to-pink-500 text-white shadow-lg shadow-fuchsia-400/35 hover:brightness-110 disabled:opacity-50 sm:w-auto",
+                  "w-full border-2 border-fuchsia-300/90 bg-white/90 text-fuchsia-900 shadow-md backdrop-blur-sm hover:bg-white disabled:opacity-50 sm:w-auto",
                 )}
               >
-                <Check className="size-5" />
-                Confirm
+                <Download className="size-5" />
+                Download PNG
               </button>
+              <Link
+                href="/"
+                className={pillClass(
+                  "w-full bg-gradient-to-r from-violet-500 via-fuchsia-500 to-pink-500 text-white shadow-lg shadow-fuchsia-400/35 hover:brightness-110 sm:w-auto",
+                )}
+              >
+                <Home className="size-5" />
+                Back to home
+              </Link>
             </div>
           </div>
         )}
@@ -421,57 +415,6 @@ export function PhotoboothClient() {
           <div className="flex flex-1 flex-col items-center justify-center gap-2 text-rose-800">
             <Loader2 className="size-8 animate-spin text-fuchsia-600" />
             Building your strip…
-          </div>
-        )}
-
-        {phase === "uploading" && (
-          <div className="flex flex-1 flex-col items-center justify-center gap-3 text-rose-900">
-            <Loader2 className="size-12 animate-spin text-fuchsia-600" />
-            <p className="text-sm font-medium">Uploading your strip…</p>
-          </div>
-        )}
-
-        {phase === "success" && blobUrl && (
-          <div className="flex flex-1 flex-col items-center gap-6 text-center">
-            <p className="rounded-full border border-emerald-200/80 bg-white/75 px-5 py-2 text-sm font-semibold text-emerald-800 shadow-md backdrop-blur-md">
-              You&apos;re all set!
-            </p>
-            <div className="rounded-3xl border-4 border-white/90 bg-white/80 p-6 shadow-xl backdrop-blur-md">
-              <QRCodeSVG
-                value={blobUrl}
-                size={220}
-                level="M"
-                includeMargin
-                className="mx-auto"
-              />
-            </div>
-            <p className="max-w-sm text-sm leading-relaxed text-rose-900/90">
-              Scan to open your strip on your phone.{" "}
-              <strong className="text-rose-800">
-                Long-press the photo to save
-              </strong>{" "}
-              to your camera roll.
-            </p>
-            <a
-              href={blobUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className={pillClass(
-                "bg-gradient-to-r from-pink-500 via-fuchsia-500 to-purple-500 text-white shadow-lg",
-              )}
-            >
-              Open image link
-            </a>
-            <button
-              type="button"
-              onClick={redo}
-              className={pillClass(
-                "border-2 border-rose-200 bg-white/75 text-rose-800 shadow-md backdrop-blur-sm",
-              )}
-            >
-              <RotateCcw className="size-5" />
-              New session
-            </button>
           </div>
         )}
 
